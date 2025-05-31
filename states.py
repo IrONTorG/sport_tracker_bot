@@ -39,12 +39,19 @@ class EditWorkoutStates(StatesGroup):
     waiting_for_workout_to_edit = State()
     waiting_for_edit_choice = State()
     waiting_for_new_value = State()
+    waiting_for_user_search = State()
+    waiting_for_export_format = State()
 
 class AdminStates(StatesGroup):
     """Состояния для админ-панели"""
     waiting_for_user_id = State()       # Ожидание ID пользователя для бана
     waiting_for_ban_reason = State()    # Ожидание причины бана
     waiting_for_confirm = State()       # Ожидание подтверждения бана
+    waiting_for_user_search = State()   # Ожидание ввода для поиска пользователя
+    waiting_for_export_format = State() # Ожидание выбора формата экспорта
+    waiting_for_user_message = State()
+    waiting_for_ban_user = State()
+    # Ожидание сообщения для пользователя  # Ожидание подтверждения бана
 
 class StatsStates(StatesGroup):
     """Состояния для просмотра статистики"""

@@ -33,7 +33,7 @@ WEEKDAYS = {
 }
 
 
-@router.message(F.text == "🔔 Напоминания")
+@router.message(F.text == "🔔 Мои напоминания")
 @router.message(Command("remind"))
 async def handle_reminders_command(message: Message):
     """Главное меню напоминаний"""
@@ -97,7 +97,6 @@ async def delete_all_reminders(callback: CallbackQuery):
     finally:
         await callback.answer()
 
-@router.message(F.text == "🔔 Мои напоминания")
 async def handle_my_reminders_command(message: Message):
     """Обработка кнопки из главного меню"""
     await show_user_reminders(message)
@@ -266,7 +265,6 @@ async def process_reminder_text(message: Message, state: FSMContext):
 @router.callback_query(F.data == "rem_my_reminders")
 async def handle_my_reminders_callback(callback: CallbackQuery):
     """Обработка callback кнопки"""
-    await show_user_reminders(callback)
     try:
         async for session in get_db_session():
             user = await session.execute(

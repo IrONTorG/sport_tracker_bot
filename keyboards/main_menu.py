@@ -17,25 +17,21 @@ def get_main_menu(user_is_admin: bool = False) -> ReplyKeyboardMarkup:
         KeyboardButton(text="📊 Моя статистика")
     )
     builder.row(
-        KeyboardButton(text="🔔 Мои напоминания"),
-        KeyboardButton(text="⚙️ Настройки")
+        KeyboardButton(text="👤 Мой профиль"),
+        KeyboardButton(text="🔔 Мои напоминания")
     )
     builder.row(
+        KeyboardButton(text="⚙️ Настройки"),
         KeyboardButton(text="ℹ️ Помощь")
     )
 
+    # Добавляем кнопку админ-панели только для админов
+    if user_is_admin:
+        builder.row(KeyboardButton(text="👑 Админ-панель"))
 
     return builder.as_markup(
         resize_keyboard=True,
         input_field_placeholder="Выберите действие..."
-    )
-
-
-def get_cancel_kb() -> ReplyKeyboardMarkup:
-    """Клавиатура с кнопкой отмены"""
-    return ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text="❌ Отмена")]],
-        resize_keyboard=True
     )
 
 

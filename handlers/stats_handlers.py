@@ -13,7 +13,11 @@ from aiogram.types import BufferedInputFile
 import csv
 import json
 import io
+from ml.predictor import predict_future_workouts
 import matplotlib.pyplot as plt
+from sklearn.linear_model import LinearRegression
+from datetime import timedelta
+import numpy as np
 
 router = Router()
 
@@ -91,12 +95,12 @@ async def process_stats_period(callback: CallbackQuery):
             await callback.answer()
 
 
-async def generate_workout_csv(workouts: list) -> io.StringIO:
+async def generate_workout_csv(workouts: list) -> io.BytesIO:
     """Генерация CSV файла с тренировками"""
     output = io.StringIO()
-    writer = csv.writer(output, delimiter=',')  # Явно указываем разделитель
+    writer = csv.writer(output, delimiter=';', quoting=csv.QUOTE_MINIMAL)
 
-    # Заголовки с единицами измерения
+    # Заголовки с единицами
     writer.writerow([
         "Дата",
         "Тип тренировки",
@@ -111,20 +115,15 @@ async def generate_workout_csv(workouts: list) -> io.StringIO:
     ])
 
     for workout in workouts:
-        # Обработка упражнений для силовых тренировок
-        exercises = ""
-        sets = ""
-        reps = ""
-        weight = ""
+        exercises = ", ".join([ex.name for ex in workout.exercises]) if workout.exercises else ""
+        sets = reps = weight = ""
 
         if workout.exercises:
-            exercises = ", ".join([ex.name for ex in workout.exercises])
-            if workout.type == "strength" and workout.exercises:
-                sets = f"{workout.exercises[0].sets}"
-                reps = f"{workout.exercises[0].reps}"
-                weight = f"{workout.exercises[0].weight} кг" if workout.exercises[0].weight else ""
+            first = workout.exercises[0]
+            sets = str(first.sets) if first.sets else ""
+            reps = str(first.reps) if first.reps else ""
+            weight = f"{first.weight} кг" if first.weight else ""
 
-        # Форматирование данных с единицами измерения
         writer.writerow([
             workout.date.strftime("%Y-%m-%d %H:%M"),
             workout.type,
@@ -135,11 +134,14 @@ async def generate_workout_csv(workouts: list) -> io.StringIO:
             sets,
             reps,
             weight,
-            workout.notes if workout.notes else ""
+            workout.notes or ""
         ])
 
-    output.seek(0)
-    return output
+    # Переводим в байты с BOM
+    byte_stream = io.BytesIO()
+    byte_stream.write(output.getvalue().encode('utf-8-sig'))
+    byte_stream.seek(0)
+    return byte_stream
 
 
 async def generate_workout_json(workouts: list) -> str:
@@ -170,41 +172,72 @@ async def generate_workout_json(workouts: list) -> str:
     return json.dumps(result, indent=2, ensure_ascii=False)
 
 
-async def generate_progress_chart(workouts: list) -> io.BytesIO:
-    """Генерация графика прогресса"""
-    dates = []
-    calories = []
-    durations = []
+async def generate_progress_chart(workouts: list) -> tuple[io.BytesIO, str]:
+    """Генерация графика прогресса с ИИ-прогнозом"""
+    if not workouts:
+        return None, "Нет тренировок для анализа."
 
-    for workout in workouts:
-        dates.append(workout.date)
-        calories.append(workout.calories)
-        durations.append(workout.duration)
+    dates = [w.date for w in workouts]
+    calories = [w.calories for w in workouts]
+    durations = [w.duration for w in workouts]
 
+    # Переводим даты в числовую шкалу
+    base_date = min(dates)
+    x = np.array([(d - base_date).days for d in dates]).reshape(-1, 1)
+
+    # Обучаем модели
+    duration_model = LinearRegression().fit(x, durations)
+    calorie_model = LinearRegression().fit(x, calories)
+
+    # Прогноз на 5 дней вперёд
+    steps = 5
+    last_day = x[-1][0]
+    future_x = np.array([last_day + i for i in range(1, steps + 1)]).reshape(-1, 1)
+    future_dates = [base_date + timedelta(days=int(i[0])) for i in future_x]
+    predicted_durations = duration_model.predict(future_x)
+    predicted_calories = calorie_model.predict(future_x)
+    predicted_durations = np.maximum(predicted_durations, 0)
+    predicted_calories = np.maximum(predicted_calories, 0)
+
+    # --- Рисуем график ---
     plt.figure(figsize=(10, 6))
 
-    # График калорий
+    # Калории
     plt.subplot(2, 1, 1)
-    plt.plot(dates, calories, 'r-', label='Калории')
+    plt.plot(dates, calories, 'r-', label='Факт')
+    plt.plot(future_dates, predicted_calories, 'g--', label='Прогноз')
     plt.ylabel('Калории')
-    plt.title('Прогресс тренировок')
+    plt.title('📈 Прогресс тренировок')
+    plt.legend()
     plt.grid(True)
 
-    # График продолжительности
+    # Длительность
     plt.subplot(2, 1, 2)
-    plt.plot(dates, durations, 'b-', label='Длительность (мин)')
+
+
+
+    
+    plt.plot(dates, durations, 'b-', label='Факт')
+    plt.plot(future_dates, predicted_durations, 'g--', label='Прогноз')
     plt.ylabel('Длительность (мин)')
     plt.xlabel('Дата')
+    plt.legend()
     plt.grid(True)
 
     plt.tight_layout()
 
+    # Сохраняем график
     buf = io.BytesIO()
     plt.savefig(buf, format='png')
     buf.seek(0)
     plt.close()
 
-    return buf
+    # Сообщение от ИИ
+    message = "🤖 Прогноз на ближайшие 5 тренировок:\n"
+    for date, dur, cal in zip(future_dates, predicted_durations, predicted_calories):
+        message += f"📅 {date.strftime('%d.%m')} — {round(dur, 1)} мин, {round(cal, 1)} ккал\n"
+
+    return buf, message
 
 
 @router.callback_query(F.data.startswith("export_"))
@@ -291,7 +324,7 @@ async def generate_workout_csv(workouts: list) -> io.StringIO:
 
 @router.callback_query(F.data == "show_progress")
 async def show_progress(callback: CallbackQuery):
-    """Показать график прогресса"""
+    """Показать график прогресса + ИИ-прогноз"""
     async for session in get_db_session():
         try:
             user = await session.execute(
@@ -303,19 +336,20 @@ async def show_progress(callback: CallbackQuery):
                 .where(Workout.user_id == user.user_id)
                 .order_by(Workout.date)
             )
-            workouts = result.scalars().all()  # Для графика не нужно joinedload
+            workouts = result.scalars().all()
 
             if not workouts:
                 await callback.answer("Нет данных для построения графика")
                 return
 
-            chart = await generate_progress_chart(workouts)
+            chart, ai_message = await generate_progress_chart(workouts)
+
             await callback.message.answer_photo(
                 BufferedInputFile(
                     chart.getvalue(),
                     filename="progress_chart.png"
                 ),
-                caption="Ваш прогресс по тренировкам"
+                caption=ai_message
             )
             await callback.answer()
         except Exception as e:
