@@ -8,7 +8,7 @@ def admin_panel_kb() -> InlineKeyboardMarkup:
 
     builder.row(
         InlineKeyboardButton(
-            text="🛑 Забанить/Разбанить",
+            text="🛑 Бан/Разбан",
             callback_data="admin_ban"
         ),
         InlineKeyboardButton(
@@ -22,7 +22,7 @@ def admin_panel_kb() -> InlineKeyboardMarkup:
             callback_data="admin_search_user"
         ),
         InlineKeyboardButton(
-            text="📊 Общая статистика",
+            text="📊 Статистика",
             callback_data="admin_stats"
         )
     )
@@ -56,7 +56,7 @@ def users_list_kb(users: list, page: int, total_pages: int) -> InlineKeyboardMar
 
     builder.row(
         InlineKeyboardButton(
-            text="⬅️ Назад",
+            text="⬅️ В админ-панель",
             callback_data="admin_back"
         )
     )
@@ -77,7 +77,7 @@ def ban_confirm_kb(user_id: int, is_banned: bool) -> InlineKeyboardMarkup:
         ),
         InlineKeyboardButton(
             text="❌ Нет, отменить",
-            callback_data="ban_cancel"
+            callback_data="admin_back"
         )
     )
 
@@ -85,12 +85,7 @@ def ban_confirm_kb(user_id: int, is_banned: bool) -> InlineKeyboardMarkup:
 
 
 def user_actions_kb(user_id: int, is_banned: bool, is_admin: bool) -> InlineKeyboardMarkup:
-    """
-    Клавиатура действий с пользователем
-    :param user_id: ID пользователя
-    :param is_banned: статус бана пользователя
-    :param is_admin: является ли админом
-    """
+    """Клавиатура действий с пользователем"""
     builder = InlineKeyboardBuilder()
 
     ban_text = "🔓 Разбанить" if is_banned else "🛑 Забанить"
@@ -118,12 +113,13 @@ def user_actions_kb(user_id: int, is_banned: bool, is_admin: bool) -> InlineKeyb
     )
     builder.row(
         InlineKeyboardButton(
-            text="⬅️ Назад",
+            text="⬅️ В админ-панель",
             callback_data="admin_back"
         )
     )
 
     return builder.as_markup()
+
 
 def stats_options_kb() -> InlineKeyboardMarkup:
     """Клавиатура опций статистики"""
@@ -145,7 +141,7 @@ def stats_options_kb() -> InlineKeyboardMarkup:
             callback_data="stats_export"
         ),
         InlineKeyboardButton(
-            text="⬅️ Назад",
+            text="⬅️ В админ-панель",
             callback_data="admin_back"
         )
     )
@@ -177,12 +173,24 @@ def export_format_kb() -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
+def stats_back_kb() -> InlineKeyboardMarkup:
+    """Клавиатура возврата в меню статистики"""
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(
+            text="⬅️ В меню статистики",
+            callback_data="stats_back"
+        )
+    )
+    return builder.as_markup()
+
+
 def admin_back_kb() -> InlineKeyboardMarkup:
     """Кнопка возврата в админ-панель"""
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(
-            text="← Назад",
+            text="⬅️ В админ-панель",
             callback_data="admin_back"
         )
     )

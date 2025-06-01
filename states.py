@@ -13,6 +13,9 @@ class WorkoutStates(StatesGroup):
     waiting_for_notes = State()
     waiting_for_more_exercises = State()
 
+class UserStates(StatesGroup):
+    waiting_for_new_name = State()
+
 class AddExerciseStates(StatesGroup):
     waiting_for_add_more = State()
 
