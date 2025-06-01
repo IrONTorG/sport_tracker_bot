@@ -33,6 +33,16 @@ WORKOUT_TYPES = {
 
 DISTANCE_WORKOUTS = {"running", "cycling", "swimming"}
 
+WORKOUT_TYPE_TRANSLATIONS = {
+    "strength": "🏋️‍♂️ Силовая",
+    "running": "🏃 Бег",
+    "cycling": "🚴 Велоспорт",
+    "yoga": "🧘 Йога",
+    "swimming": "🏊 Плавание",
+    "jumping_rope": "🤸 Прыжки на скакалке",
+    "cardio": "❤️ Кардио"
+}
+
 
 def format_exercise_details(exercise: Exercise) -> str:
     """Форматирует детали упражнения в строку"""
@@ -63,6 +73,11 @@ async def show_workouts(message: Message, state: FSMContext):
             select(User).where(User.telegram_id == message.from_user.id))
         user = user.scalar_one()
 
+        # Проверка на бан
+        if user.is_banned:
+            await message.answer("🚫 Ваш аккаунт заблокирован. Вы не можете добавлять или редактировать тренировки.")
+            return
+
         workouts = await session.execute(
             select(Workout)
             .where(Workout.user_id == user.user_id)
@@ -82,50 +97,75 @@ async def show_workouts(message: Message, state: FSMContext):
         await state.update_data(
             current_page=1,
             total_pages=max(1, (total + 4) // 5),
-            user_id=user.user_id
+            user_id=user.user_id,
+            message_id=message.message_id  # Сохраняем ID сообщения для редактирования
         )
         await state.set_state(PaginationStates.viewing_workouts)
 
         response = await format_workouts_response(workouts, 1, total, session)
-        await message.answer(
-            response,
-            reply_markup=get_workout_pagination_kb(has_prev=False, has_next=total > 5)
-        )
+
+        # Если это первое сообщение, отправляем новое, иначе редактируем существующее
+        if 'message_id' not in (await state.get_data()):
+            sent_message = await message.answer(
+                response,
+                reply_markup=get_workout_pagination_kb(has_prev=False, has_next=total > 5)
+            )
+            await state.update_data(message_id=sent_message.message_id)
+        else:
+            data = await state.get_data()
+            try:
+                await message.bot.edit_message_text(
+                    chat_id=message.chat.id,
+                    message_id=data['message_id'],
+                    text=response,
+                    reply_markup=get_workout_pagination_kb(has_prev=False, has_next=total > 5)
+                )
+            except:
+                # Если не удалось редактировать (например, сообщение слишком старое), отправляем новое
+                sent_message = await message.answer(
+                    response,
+                    reply_markup=get_workout_pagination_kb(has_prev=False, has_next=total > 5)
+                )
+                await state.update_data(message_id=sent_message.message_id)
 
 
 async def format_workouts_response(workouts: list, current_page: int, total: int, session) -> str:
     """Форматирует список тренировок в текст сообщения"""
-    response = f"Ваши тренировки (страница {current_page}):\n\n"
+    response = f"🏋️‍♂️ <b>Ваши тренировки</b> (страница {current_page}):\n\n"
     for i, workout in enumerate(workouts, 1):
+        workout_type = WORKOUT_TYPE_TRANSLATIONS.get(workout.type, workout.type.capitalize())
+
         response += (
-            f"{i}. {workout.type.capitalize()} - "
-            f"{workout.date.strftime('%d.%m.%Y %H:%M')}\n"
-            f"Длительность: {workout.duration} мин.\n"
+            f"🔹 <b>{i}. {workout_type}</b>\n"
+            f"📅 <i>{workout.date.strftime('%d.%m.%Y %H:%M')}</i>\n"
+            f"⏱ Длительность: <b>{workout.duration} мин.</b>\n"
         )
 
         if workout.distance:
-            response += f"Дистанция: {workout.distance} км\n"
+            response += f"📏 Дистанция: <b>{workout.distance} км</b>\n"
 
         if workout.type == "strength":
             exercises = await session.execute(
                 select(Exercise).where(Exercise.workout_id == workout.workout_id))
             exercises = exercises.scalars().all()
-            for ex in exercises:
-                response += f"Упражнение: {ex.name} ({ex.sets}x{ex.reps} по {ex.weight}кг)\n"
+            if exercises:
+                response += "💪 Упражнения:\n"
+                for ex in exercises:
+                    response += f"  - {ex.name} ({ex.sets}x{ex.reps} по {ex.weight}кг)\n"
 
-        response += f"Калории: {workout.calories} ккал\n\n"
+        response += f"🔥 Калории: <b>{workout.calories} ккал</b>\n\n"
 
-    response += f"Всего тренировок: {total}"
+    response += f"📊 Всего тренировок: <b>{total}</b>"
     return response
 
 
 @router.message(PaginationStates.viewing_workouts, F.text.in_(["⬅️ Назад", "➡️ Вперед"]))
 async def paginate_workouts(message: Message, state: FSMContext):
-    """Обработка пагинации тренировок"""
     data = await state.get_data()
     current_page = data['current_page']
     total_pages = data['total_pages']
     user_id = data['user_id']
+    message_id = data.get('message_id', message.message_id)
 
     if message.text == "⬅️ Назад" and current_page > 1:
         current_page -= 1
@@ -152,13 +192,27 @@ async def paginate_workouts(message: Message, state: FSMContext):
         await state.update_data(current_page=current_page)
 
         response = await format_workouts_response(workouts, current_page, total, session)
-        await message.answer(
-            response,
-            reply_markup=get_workout_pagination_kb(
-                has_prev=current_page > 1,
-                has_next=current_page < total_pages
+
+        try:
+            await message.bot.edit_message_text(
+                chat_id=message.chat.id,
+                message_id=message_id,
+                text=response,
+                reply_markup=get_workout_pagination_kb(
+                    has_prev=current_page > 1,
+                    has_next=current_page < total_pages
+                )
             )
-        )
+        except Exception as e:
+            logging.error(f"Error editing message: {e}")
+            sent_message = await message.answer(
+                response,
+                reply_markup=get_workout_pagination_kb(
+                    has_prev=current_page > 1,
+                    has_next=current_page < total_pages
+                )
+            )
+            await state.update_data(message_id=sent_message.message_id)
 
 
 @router.message(PaginationStates.viewing_workouts, F.text == "➕ Добавить тренировку")

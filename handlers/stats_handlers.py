@@ -23,23 +23,30 @@ router = Router()
 
 
 @router.message(F.text == "📊 Моя статистика")
-async def stats_menu(message: Message):
+async def stats_menu(message: Message, state: FSMContext):
     """Меню выбора периода статистики"""
-    await message.answer(
+    # Сохраняем ID сообщения для последующего редактирования
+    sent_message = await message.answer(
         "Выберите период для статистики:",
         reply_markup=get_stats_period_kb()
     )
+    await state.update_data(stats_message_id=sent_message.message_id)
 
 
 @router.callback_query(F.data.startswith("stats_"))
-async def process_stats_period(callback: CallbackQuery):
+async def process_stats_period(callback: CallbackQuery, state: FSMContext):
     """Обработка выбора периода статистики"""
     period = callback.data.split('_')[1]
+    period_names = {
+        "day": "день",
+        "week": "неделю",
+        "month": "месяц",
+        "all": "всё время"
+    }
+
     async for session in get_db_session():
         try:
             user_id = callback.from_user.id
-
-            # Get user from database first
             user = await session.execute(
                 select(User).where(User.telegram_id == user_id))
             user = user.scalar_one_or_none()
@@ -67,7 +74,7 @@ async def process_stats_period(callback: CallbackQuery):
                     func.coalesce(func.sum(Workout.calories), 0).label("total_calories"),
                     func.coalesce(func.sum(Workout.distance), 0).label("total_distance")
                 ).where(
-                    Workout.user_id == user.user_id,  # Use database user_id
+                    Workout.user_id == user.user_id,
                     Workout.date >= start_date,
                     Workout.date <= end_date
                 )
@@ -75,24 +82,38 @@ async def process_stats_period(callback: CallbackQuery):
             stats = stats.first()
 
             if not stats.workouts_count:
-                await callback.message.answer("Нет данных за выбранный период")
-                return
+                response = f"📊 У вас нет тренировок за {period_names[period]}."
+            else:
+                response = (
+                    f"📊 <b>Ваша статистика за {period_names[period]}:</b>\n\n"
+                    f"🏋️‍♂️ <b>Количество тренировок:</b> {stats.workouts_count}\n"
+                    f"⏱ <b>Общее время:</b> {stats.total_duration:.1f} мин.\n"
+                    f"🔥 <b>Сожжено калорий:</b> {stats.total_calories:.0f} ккал\n"
+                    f"📏 <b>Общая дистанция:</b> {stats.total_distance:.1f} км"
+                )
 
-            # Формируем сообщение
-            message_text = (
-                f"📊 Статистика за {period}:\n"
-                f"• Количество тренировок: {stats.workouts_count}\n"
-                f"• Общее время: {stats.total_duration:.1f} мин.\n"
-                f"• Сожжено калорий: {stats.total_calories:.0f} ккал\n"
-                f"• Общая дистанция: {stats.total_distance:.1f} км"
-            )
+            data = await state.get_data()
+            message_id = data.get('stats_message_id', callback.message.message_id)
 
-            await callback.message.answer(message_text)
+            try:
+                await callback.message.bot.edit_message_text(
+                    chat_id=callback.message.chat.id,
+                    message_id=message_id,
+                    text=response,
+                    reply_markup=get_stats_period_kb()
+                )
+            except:
+                # Если не удалось редактировать, отправляем новое сообщение
+                sent_message = await callback.message.answer(
+                    response,
+                    reply_markup=get_stats_period_kb()
+                )
+                await state.update_data(stats_message_id=sent_message.message_id)
+
+            await callback.answer()
         except Exception as e:
             logging.error(f"Ошибка получения статистики: {e}")
             await callback.message.answer("❌ Ошибка при получении статистики")
-        finally:
-            await callback.answer()
 
 
 async def generate_workout_csv(workouts: list) -> io.BytesIO:

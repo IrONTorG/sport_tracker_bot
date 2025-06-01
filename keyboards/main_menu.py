@@ -28,15 +28,16 @@ def get_main_menu(user_is_admin: bool = False) -> ReplyKeyboardMarkup:
     )
 
 
-def get_settings_menu() -> ReplyKeyboardMarkup:
+def get_settings_menu(notifications_enabled: bool = True) -> ReplyKeyboardMarkup:
     """Клавиатура настроек"""
     builder = ReplyKeyboardBuilder()
 
     builder.row(
         KeyboardButton(text="👤 Изменить имя"),
-        KeyboardButton(text="📨 Связаться с админом")
+        KeyboardButton(text="🔔 Управление уведомлениями")
     )
     builder.row(
+        KeyboardButton(text="📨 Связаться с админом"),
         KeyboardButton(text="🗑️ Удалить аккаунт")
     )
     builder.row(

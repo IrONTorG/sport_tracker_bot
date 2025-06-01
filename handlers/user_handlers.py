@@ -217,15 +217,48 @@ async def cancel_delete(callback: CallbackQuery):
     """Отмена удаления аккаунта"""
     await callback.message.edit_text("❌ Удаление аккаунта отменено")
 
+
 @router.message(F.text == "⚙️ Настройки")
 async def show_settings(message: Message):
     """Показывает меню настроек"""
-    await message.answer(
-        "⚙️ <b>Настройки</b>\n\n"
-        "Выберите нужный пункт:",
-        reply_markup=get_settings_menu(),
-        parse_mode="HTML"
-    )
+    async for session in get_db_session():
+        user = await session.execute(
+            select(User).where(User.telegram_id == message.from_user.id))
+        user = user.scalar_one()
+
+        await message.answer(
+            "⚙️ <b>Настройки</b>\n\n"
+            f"🔔 Уведомления: {'Включены ✅' if user.notifications_enabled else 'Выключены ❌'}\n\n"
+            "Выберите нужный пункт:",
+            reply_markup=get_settings_menu(user.notifications_enabled),
+            parse_mode="HTML"
+        )
+
+
+@router.message(F.text == "🔔 Управление уведомлениями")
+async def toggle_notifications(message: Message):
+    """Переключает статус уведомлений"""
+    async for session in get_db_session():
+        try:
+            user = await session.execute(
+                select(User).where(User.telegram_id == message.from_user.id))
+            user = user.scalar_one()
+
+            user.notifications_enabled = not user.notifications_enabled
+            await session.commit()
+
+            status = "включены ✅" if user.notifications_enabled else "выключены ❌"
+            await message.answer(
+                f"🔔 Уведомления теперь {status}\n\n"
+                f"Это влияет на:\n"
+                f"- Получение напоминаний о тренировках\n"
+                f"- Другие уведомления от бота",
+                reply_markup=get_settings_menu(user.notifications_enabled)
+            )
+        except Exception as e:
+            await session.rollback()
+            await message.answer("❌ Произошла ошибка при изменении настроек")
+            logging.error(f"Error toggling notifications: {e}")
 
 @router.message(F.text == "👤 Изменить имя")
 async def change_name(message: Message, state: FSMContext):

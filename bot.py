@@ -42,7 +42,8 @@ async def send_reminders(bot: Bot):
             stmt = select(Reminder).join(User).where(
                 (Reminder.day_of_week == current_day) | (Reminder.day_of_week == current_day_ru),
                 func.time(Reminder.reminder_time) == current_time,
-                User.is_banned == False
+                User.is_banned == False,
+                User.notifications_enabled == True  # Добавляем проверку на включенные уведомления
             )
 
             result = await session.execute(stmt)
@@ -50,11 +51,11 @@ async def send_reminders(bot: Bot):
 
             # Предварительно загружаем связанные объекты User
             for reminder in reminders:
-                await session.refresh(reminder, ['user'])  # Явно загружаем отношение
+                await session.refresh(reminder, ['user'])
 
             for reminder in reminders:
                 try:
-                    if reminder.user:  # Теперь user должен быть доступен
+                    if reminder.user and reminder.user.notifications_enabled:  # Дополнительная проверка
                         await bot.send_message(
                             chat_id=reminder.user.telegram_id,
                             text=f"🔔 Напоминание:\n{reminder.reminder_text}"

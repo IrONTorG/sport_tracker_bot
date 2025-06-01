@@ -14,6 +14,7 @@ class User(Base):
     registration_date = Column(DateTime, default=datetime.utcnow)
     is_admin = Column(Boolean, default=False)
     is_banned = Column(Boolean, default=False)
+    notifications_enabled = Column(Boolean, default=True)  # Новое поле
 
     workouts = relationship("Workout", back_populates="user")
     reminders = relationship("Reminder", back_populates="user")
